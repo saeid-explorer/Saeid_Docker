@@ -1,0 +1,957 @@
+======================================= DOCKER ===================================
+
+* Docker Engine Overview
+	- acts as a client-server application with:
+		- a server with a long-running process "dockerd"
+		- APIs which specify interfaces that programs can use to talk to and instruct the Docker daemon
+		- A CLI client "docker"
+			- The CLI uses Docker APIs to control or interact with the Docker daemon through scripting or direct CLI commands
+
+** Note: "containerd" is a systemd unit file that's controling loading of the containerd service that dockerd is dependent on
+** Note: "dockerd" uses "containerd" in order to create containers
+
+** Docker on Linux
+	- Three main ways to install: script, store, or docker-machine
+		1) get.docker.com script (latest Edge release)
+			- curl -sSL https://get.docker.com/ | sh
+
+		2) store.docker.com has instructions for each distro
+
+		3) Installing in a VM, Cloud Instance, all are the same process
+
+
+** Install Docker on Linux(Ubuntu)
+	- curl -fsSL get.docker.com -o get-docker.sh
+	- sh get-docker.sh
+	- add user to docker group:
+		- (e.g.) sudo usermod -aG docker steve
+	- After installing Docker, also get docker-compose and docker-machine
+		- https://docs.docker.com/compose/install/
+		- https://docs.docker.com/desktop/
+
+** Image vs. Container
+	- An image is the application we want to run
+	- A container is an instance of that image running as a process
+	- You can have many containers running off the same image
+	- Docker's default image "registry" is called Docker Hub(hub.docker.com)
+
+** running a container
+	- (e.g.): docker container run --publish 80:80 nginx
+	- running a container in background
+		- use --detach switch or -d
+		- (e.g.): docker container run --publish 80:80 --detach nginx
+			or
+		- (e.g.): docker container run --publish 80:80 -d nginx
+
+** list the running containers
+	- docker container ls
+
+
+** list all containers(running and stopped)
+	- docker container ls -a
+
+** Starting an existing stopped container
+	- docker container start
+
+** stopping a running container
+	- docker container stop [container ID]
+
+** running a container with a specific name
+	- (e.g.): docker container run --publish 80:80 --name webhost nginx
+
+** showing logs for a specific container
+	- docker container logs [container_name/ID]
+	- (e.g.): docker container logs webhost
+
+** removing/deleting one or more containers
+	- docker container rm [container_ID]
+
+** Listing running processes in specific container
+	- docker top [container_name]
+
+** Getting details of a specific container config
+	- docker container inspect [container_name]
+
+** Performance Stats for all containers(including CPU,Memory,Networking,Storage stats)
+	- docker container stats
+
+** Starting new container interactively
+	- docker container run -it
+	- (e.g.) docker container run -it bash
+		or
+	- docker container start -ai
+
+** Running additional command in existing container
+	- docker container exec -it
+
+** Docker Networks: Concepts
+	
+	- quick port check of a container
+		- docker container port <Container_Name>
+
+	- Docker Networks Defaults
+		- each container connected to a private virtual network "bridge"
+		- each virtual network routes through NAT firewall on host IP
+		- all containers on a virtual network can talk to each other without -p
+		- Best practice is to create a new virtual network for each app
+
+	- you can make new virtual networks
+	- you can attach containers to more than one virtual network(or none)
+	- you can skip virtual networks and use host IP (--net=host)
+	- you can use different Docker network drivers to gain new abilities
+
+	- getting IP address of a container:
+		- docker container inspect --format "{{ .NetworkSettings.IPAddress }}" <Container_Name>
+
+
+	- Docker Networks: CLI Management
+		-show networks
+			- docker network ls 
+		- inspect a network
+			- docker network inspect
+		- create a network
+			- docker network create --driver
+		- attach a network to a container
+			- docker network connect
+		- detach a network to a container
+			- docker network disconnect
+		- listing containers attached to a network
+			- (e.g.) docker network inspect bridge
+
+		-- network bridge
+			- default docker virtual network, which is NAT'ed behind the host IP
+
+		-- network host
+			- host network gains performance by skipping virtual networks but sacrifices security of container model
+
+		-- network none
+			- removes eth0 and only leaves you with localhost interface in container
+
+		- Example of creating a new network and assigning to a container
+			- docker network create my_app_net
+			- docker container run -d --name nginx --network my_app_net nginx
+
+
+	- Docker Networks: Default Security
+		- Create your apps so frontend/backend sit on same Docker network
+		- Their inter-communication never leaves host
+		- All externally exposed ports closed by default
+		- You must manually expose via -p, which is better default security
+		- This gets even better later with Swarm and Overlay networks
+
+
+	- Docker Networks: DNS
+
+		- Docker DNS
+			- Docker daemon has a built-in DNS server that containers use by default
+
+		- DNS Default Names
+			- Docker defaults the hostname to the container's name, but you can also set aliases
+
+		- DNS Alias
+			- (e.g.) docker container run -d --net dude --net-alias search elasticsearch:2
+
+
+** Docker Images
+	- What's an image?
+		- App binaries and dependencies
+		- Metadata about the image data and how to run the image
+		- Official definition: "An image is an ordered collection of root filesystem changes and the corresponding execution parameters for use within a container runtime"
+		- Not a complete OS. No Kernel, kernel modules(e.g. drivers)
+		- Small as one file(your app binary) like a golang static binary
+	
+	- Docker Image Layers
+		- Show layers of changes made in image
+			- docker image history <image_name>
+
+		- returning JSON metadata about the image
+			- docker image inspect <image_name>
+
+	- assign one or more tags to an image
+		- docker image tag
+
+	- Official Repositories
+		- They live at the "root namespace" of the registry, so they don't need account name in front of repo name
+
+	- Uploading changed layers to an image registry (default is hub)
+		- docker image push
+
+	- docker login <server>
+		- defaults to logging in Hub, but you can override by adding server URL
+
+	- docker logout
+		- always logout from shared machines or servers when done, to protect your account
+
+
+** Building Images - The Dockerfile Basics
+	
+	- "FROM" directive in Dockerfile
+		- used to specify a base image(preferabally an image with an integrated package manager (e.g. Debian))
+
+		- e.g.:
+			- FROM debian:jessie
+
+	- "ENV" directive in Dockerfile
+		- used to set Environment Variable on a container
+		- One reason Environment Variables were chosen as preferred way to inject key/value is they work everywhere, on every OS and config
+		-e.g.:
+			- ENV NGINNX_VERSION 1.11.10-1-jessie
+
+	- "RUN" directive in Dockerfile
+		- used to execute/run shell commands inside a container
+		- && is used when we want to run several commands after one another
+		- e.g.:
+			- RUN ln -sf /dev/stdout /var/log/nginx/access.log \
+				  && ln -sf /dev/stderr /var/log/nginx/error.log
+
+
+	- "EXPOSE" directive in Dockerfile
+		- used to publish/expose ports of a container
+		- e.g.:
+			- EXPOSE 80 443
+
+
+	- "CMD" directive in Dockerfile
+		- CMD is a required parameter, that is the final command run every time a new container from an image is launched
+		- e.g.:
+			- CMD ["nginx", "-g", "daemon off;"]
+
+
+	- "WORKDIR" directive in Dockerfile 
+		- is like cd command inside a container
+		- e.g.:
+			- WORKDIR /usr/share/nginx/html
+
+	- "COPY" directive in Dockerfile
+		- is used to copy a file to a container
+		- COPY index.html index.html
+
+** Building Images - Running Docker Builds
+
+
+	- Example Dockerfile for building a custom image
+
+
+
+
+FROM debian:jessie
+
+ENV NGINNX_VERSION 1.11.10-1-jessie
+
+RUN apt-key adv --keyserver hkp://gpg.mit.edu:80 --recv-keys 573BFD6B3D8FBC641079A6ABABF5BD827BD9BF62 \
+    && echo "deb http://nginx.org/packages/mainline/debian/ jessie nginx" >> /etc/apt/sources.list \
+    && apt-get update \
+    && apt-get install --no-install-recommends --no-install-suggests -y \
+                        ca-certificates \
+                        nginx=${NGINX_VERSION} \
+                        nginx-module-xslt \
+                        nginx-module-geoip \
+                        nginx-module-image-filter \
+                        nginx-module-perl \
+                        nginx-module-njs \
+                        gettext-base \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN ln -sf /dev/stdout /var/log/nginx/access.log \
+    && ln -sf /dev/stderr /var/log/nginx/error.log
+
+EXPOSE 80 443
+
+CMD ["nginx", "-g", "daemon off;"]
+
+
+
+
+	- build a custom image using a Dockerfile
+		- go the directory where your Dockerfile is located
+		- docker image build -t customnginx .
+			- "-t" is used to tag the image
+			- "." means current directory
+
+
+
+** Container Lifetime & Persistent Data
+	- Containers are usually immutable and ephemeral
+	- "Immutable Infrastructure": only re-deploy containers, never change
+	- This is the ideal scenario, but what about databases, or unique data?
+		- Docker gives us features to ensure these "seperation of concerns"
+		- This s known as "persistent data"
+		- Two ways: Volumes and Bind Mounts
+			- Volumes: make special location outside of container UFS(Union File System)
+			- Bind Mounts: link container path to host path
+
+
+
+** Persistent Data - Data Volumes
+ 	-  volumes are used to bind some directory in the host to the container, so that its data will be persistent
+ 	- named volumes 
+ 		- friendly way to assign volumes to containers
+ 		- "-v" in "docker container run" command is used to either create a new volume for the container or it allows us two other options:
+ 			- one of them is to create a named volume
+ 			- e.g.:
+ 				- docker container run -d --name mysql -e MYSQL_ALLOW_EMPTY_PASSWORD=True -v mysql-db:/var/lib/mysql mysql
+ 			- then we can type "docker volume ls" to see new volume
+ 			- we can also type "docker volume inspect <volume_name>" command to view the details
+
+ 	- docker volume create
+ 		- required to do this before "docker run" to use custom drivers and labels
+
+
+ ** Persistent Data - Bind Mounting
+
+ 	- Bind Mapping maps a host file or directory to a container file or directory
+ 	- Bind Mapping is basically just two locations pointing to the same file(s)
+ 	- Again, skips UFS, and host files overwrite any in container
+ 	- Can't use in Dockerfile, must be at "container run"
+ 		- ... run -v /Users/bret/stuff:/path/container (mac/linux)
+ 		- ... run -v //Users/bret/stuff:/path/container (Windows)
+
+ 	- e.g.:
+ 		- docker container run -d --name nginx -p 8080:8080 -v $(pwd):/usr/share/nginx/html nginx
+
+ ** Note: get the realtime logs of a container
+ 		- docker container logs -f <container_name> 
+
+
+ ** Docker Compose and the docker-compose.yml file
+
+ 	- Docker Compose
+ 		- Why: Configure relationship between containers
+ 		- Why: save our docker container run settings in easy-to-read file
+ 		- Why: create one-liner development environment startups
+ 		- Comprised of 2 seperate but related things
+ 			1) YAML-formatted file that describes our solution options for:
+ 				- containers
+ 				- networks
+ 				- volumes
+ 			2) A CLI tool docker-compose used for local dev/test automation with those YAML files
+
+- docker-compose.yml
+	- Compose YAML format has it's own versions: 1,2,2.1,3,3.1,3.2,3.3,3.4,3.5,3.6,3.7,3.8
+	- YAML file can be used with docker-compose command for local docker automation or ...
+	- with docker directly in production with Swarm(as of v1.13)
+	- docker-compose --help
+	- docker-compose.yml is default filename, but any can be used with docker-compose -f
+
+
+
+
+
+
+ 	* template of a docker-compose.yml file
+
+
+version: '3.1'   #if noversion is specified  then v1  is assumed. Recommended is v2 minimum
+
+
+services:  #containers. same as docker run
+  servicename:   # a friendly name. This is also DNS name inside network
+    image:       # optional if you use build:
+    command:	 # optional, replace the default CMD specified by the image
+    environment: # optional, same as -e in docker run
+    volumes:	 # optional, same as -v in docker run
+  servicename2:
+
+volumes: # optional, same as docker volume create
+
+networks: # optional, same as docker network create
+
+
+
+
+
+ 	* example of a docker-compose.yml file
+
+
+ version: '2'
+
+ # same as
+ # docker run -p 80:4000 -v $(pwd):/site bretfisher/jekyll-serve
+
+ services:
+   jekyll:
+   	 image: bretfisher/jekyll-serve
+   	 volumes:
+   	   - .:/site
+   	 ports:
+   	   - '80:4000'
+
+
+
+
+
+** docker-compose CLI
+	- CLI tool comes with Docker for Windows/MAC, but seperate download for Linux
+	- Not a production-grade tool but ideal for local development and test
+	- Two most common commands are
+		- docker compose up    # setup volumes/networks and start all containers
+		- docker compose down  # stop all containers and remove cont/vol/net
+	- In order to run docke compose in background:
+		- docker compose up -d
+	- In order to get the docker compose logs:
+		- docker compose logs
+	- If all projects had a Dockerfile and docker-compose.yml, then "new developer onboarding" would be:
+		- git clone github.com/some/software
+		- docker-compose up
+			0r
+		- docker compose up
+
+
+	* Example of docker-compose.yml file with two services/containers:
+
+
+version: '3'
+
+services:
+  proxy:
+    image: nginx:1.11
+    ports:
+      - '8080:8080'
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/defaul.conf:ro
+
+  web:
+    image: httpd
+
+
+
+** Using Compose to build image
+
+* Example of using Compose to build a custom image
+	
+
+version: '2'
+
+services:
+  proxy:
+    build:
+      context:.
+      dockerfile: nginx.Dockerfile
+    image: nginx-custom
+    ports:
+      - '80:80'
+  web:
+    image: httpd
+    volumes:
+      - ./html:/usr/local/apache2/htdocs/
+
+
+  * nginx.Dockerfile:
+
+FROM nginx:1.11
+
+COPY nginx.conf /etc/nginx.conf.d/default.conf
+
+
+
+
+** Swarm Mode: Built-in Orchesteration
+	- swarm mode is a clustering solution built inside Docker
+	- Not related to Swarm "classic" for pre-1.12 versions
+	- Added in 1.12(Summer 2016) via SwarmKit toolkit
+	- Enhanced in 1.13(January 2017) via Stacks and Secrets
+	- Not enabled by default, new commands once enabled:
+		- docker swarm
+		- docker node
+		- docker service
+		- docker stack
+		- docker secret
+
+	- Swarm Mode includes Manager and Worker nodes
+	- Database of Swarm Mode is Called RAFT
+
+	* Manager Node Components(and actions they take when user types "docker service create")
+		- API: Accepts command from client and creates service object
+		- Orchestrator: Reconciliation loop for service objects and creates tasks
+		- Allocator: Allocates IP addresses to tasks
+		- Scheduler: Assigns nodes to tasks
+		- Dispatcher: Checks in on Workers
+
+
+	* Worker Node (Manager Node Components(and actions they take when user types "docker service create")
+		- Worker: Connects to Dispatcher to check on assigned tasks
+		- Executor: Executes the tasks assigned to worker node
+
+	- In order to see if Swarm is ON or not
+		- docker info
+			- Swarm: active/inactive
+
+	- To initialize Docker Swarm
+		- docker swarm init
+			- this will do the following in the background:
+				- Lots of PKI and security automation
+					- Root Signing Certificate created for our Swarm
+					- Certificate is issued for first Manager Node
+					- Join Tokens are created
+
+				- RAFT Database created to store root CA, configs and secrets
+					- Encrypted by default on disk(1.13+)
+					- No need for another key/value system to hold orchestration/secrets
+					- Replicates logs amongst Managers via mutual TLS in "Control Plane"
+
+
+	- To get the list of Swarm Nodes
+		- docker node ls
+
+	- Service in Swarm
+		- Service in Swarm replaces the docker run
+
+	* example of a simple docker service
+		- docker service create alpine ping 8.8.8.8
+
+	- To get the list of containers of a service
+		- docker service ps <service_name>
+
+	- updating a created service and editing it
+		- e.g.:
+			- docker service update <ID> --replicas 3
+			- In this case the number of replicas has been changed
+		- using "docker service update" command, we can edit the current running service and edit different features of it(e.g. replica numbers) and apply them without downtime
+
+	- To view history of a docker service
+		- docker service ps <Service_name>
+
+	- To remove a service
+		- docker service rm <Service_name>
+
+	* Note: one of the options for docker swarm nodes is using play-with-docker.com
+
+	- To convert/promote a worker swarm node to be manager
+		- use the following command in an already manager node:
+			- docker node update --role manager <node_name>
+			- e.g.: docker node update --role manager node2
+
+		OR
+
+		- get a manager token using the following command:
+			- docker swarm join-token manager
+		- then use the token on a worker node to convert it to manager
+
+
+
+** Overlay Multi-Host Networking
+	- Just choose --driver overlay when creating network(i.e. docker network create)
+	- For container-to-container traffic inside a single Swarm
+	- Optional IPSec(AES) encryption on network creation
+	- Each service can be connected to multiple networks(e.g. front-end, back-end)
+
+	* Example of creating an overlay network for docker swarm service
+		- docker network create --driver overlay mydrupal
+		- docker service create --name drupal --network mydrupal -p 80:80 drupal
+
+
+** Routing Mesh
+	- Routes ingress(incomming) packets for a service to proper Task
+	- Spans all nodes in Swarm
+	- Uses IPVS from Linux Kernel
+	- Load balances Swarm Services across their Tasks
+	- Two ways this works:
+		- Container-to-Container in an Overlay Network(uses VIP)
+		- External traffic incomming to published ports(all nodes listen)
+	- This is stateless load balancing
+	- This LB is at OSI Layer 3(TCP), not Layer 4(DNS)
+	- Both limitation can be overcome with:
+		- Nginx or HAProxy LB proxy
+		or
+		- Docker Enterprise Edition, which comes with built-in L4 web proxy
+
+
+* Adding a volume to a docker service
+	- use this format in "docker service create":
+		-  --mount type=volume,source=<volume_name>,target=<PATH_Inside_Container>
+	- e.g.:
+		-  docker service create --name db --network backend --mount type=volume,source=db-data,target=/var/lib/postgresql/data postgres:9.4
+
+
+* getting logs of a docker service
+	- docker service logs <Service_name>
+
+
+
+** Stacks: Production Grade Compose
+	- In 1.13 Docker adds a new layer of abstraction to Swarm called Stacks
+	- Stacks accept Compose files as their declarative definition for services, networks and volumes
+	- We use "Docker stack deploy" rather than "Docker service create"
+	- Stacks manage all those objects for us, including overlay network per stack. Adds stack name to start of their name
+	- New "deploy:" key in Compose file. Can't do "build:"
+	- Compose now ignores "deploy:", Swarm ignores "build:"
+	- "docker-compose" cli not needed on Swarm server
+
+
+
+	* Example docker-stack.yml file:
+
+version: "3.9"
+services:
+
+  redis:
+    image: redis:alpine
+    networks:
+      - frontend
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 2
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+  db:
+    image: postgres:9.4
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - backend
+    environment:
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+  vote:
+    image: bretfisher/examplevotingapp_vote
+    ports:
+      - 5000:80
+    networks:
+      - frontend
+    depends_on:
+      - redis
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 2
+      restart_policy:
+        condition: on-failure
+  result:
+    image: bretfisher/examplevotingapp_result
+    ports:
+      - 5001:80
+    networks:
+      - backend
+    depends_on:
+      - db
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 2
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+
+  worker:
+    image: bretfisher/examplevotingapp_worker
+    networks:
+      - frontend
+      - backend
+    depends_on:
+      - db
+      - redis
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels: [APP=VOTING]
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 120s
+      placement:
+        constraints: [node.role == manager]
+
+  visualizer:
+    image: bretfisher/visualizer
+    ports:
+      - 8080:8080
+    stop_grace_period: 1m30s
+    networks:
+      - frontend
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+
+networks:
+  frontend:
+  backend:
+
+volumes:
+  db-data:
+
+
+  - deploying a stack using a stack.yml file
+  	- docker stack deploy -c <stack.yml_file_name> <stack_name>
+  	- e.g.:
+  		- docker stack deploy -c example-voting-app-stack.yml voteapp
+
+
+  - listing the services inside stack
+  	- docker stack services <stack_name>
+
+
+
+ ** Secrets Storage
+ 	- Easiest "secure" solution for storing secrets in Swarm
+ 	- What is a Secret?
+ 		- Usernames and passwords
+ 		- TLS certificates and keys
+ 		- SSH keys
+ 		- Any data you would prefer not be "on front page of news"
+ 	- Supports generic strings or binary content up to 500kb in size
+ 	- Doesn't require apps to be rewritten
+ 	- As of Docker 1.13.0 Swarm Raft DB is encrypted on Disk
+ 	- Only stored on disk on Manager nodes
+ 	- Default is Managers and Workers "control plane" is TLS + Manual Auth
+ 	- Secrets are first stored in Swarm, then assigned to Service(s)
+ 	- Only containers in assigned Service(s) can see them
+ 	- They look like files in container but are actually in-memory fs
+ 		- /run/secrets/<secret_name>
+ 		or
+ 		- /run/secrets/<secret_alias>
+ 	-Local docker-compose can use file-based secrets, but not secure
+ 	- Minimum version of docker-compose.yml file which supports Secrets is 3.1
+
+
+** Secrets with Services
+	
+	- Creating a secret file
+		- docker secret create <secret_name> <file_name>
+		- e.g.:
+			- docker secret create psql_user psql_user.txt
+		or 
+		-e.g.:
+			- echo "myDBpassWORD" | docker secret create psql_pass -
+
+	- Create a service using secrets
+		- e.g.:
+			- docker service create --name psql --secret psql_user --secret psql_pass -e POSTGRES_PASSWORD_FILE=/run/secrets/psql_pass -e POSTGRES_USER_FILE=/run/secrets/psql_user postgres
+
+	- remove a docker service secret
+		- docker service update --secret-rm
+
+
+
+** Secrets with Stacks
+	
+	* Example of secrets on stack.yml file:
+
+
+secrets:
+  psql_user:
+  	file: ./psql_user.txt
+  psql_password:
+  	file: ./psql_password.txt
+
+
+OR 
+
+secrets:
+  - psql_user
+  - psql_password
+
+
+  * Example of Creating secrets inside docker-stack in the External format
+
+  	- first we should create secret:
+  		- echo "passwd" | docker secret create psql-pw -
+
+  	- then we edit the docker-compose/stack.yml file:
+
+version: '3.1'
+
+services:
+
+  postgres:
+    image: postgres:9.6
+    environment:
+      - POSTGRES_PASSWORD_FILE=/run/secrets/psql-pw
+    secrets:
+      - psql-pw
+
+secrets:
+  psql-pw:
+    external: true
+
+
+    * Note: in the local docker-compose.yml file(unlike stack) we can only use file format of Secrets(not the external format)
+    	- e.g.(in docker-compose.yml):
+    	version: '3.1'
+    	
+    	services:
+
+    	  postgres:
+    	    environment:
+    	      - POSTGRES_PASSWORD_FILE=/run/secrets/psql-pw
+    	    secrets:
+    	      - psql-pw
+
+    	secrets:
+    	  psql-pw:
+    	    file: psql-fake-password.txt
+
+
+
+** docker-compose.override.yml
+	- when we have two files called "docker-compose.yml" and "docker-compose.override.yml", and we use the "docker compose up" command, it will automatically first run the "docker-compose.yml" file and then it will run "docker-compose.override.yml" file over that
+
+
+	* Note: In order to run two compose files sequentially, use -f option
+		- e.g.: docker compose -f docker-compose.yml -f docker-compose.prod.yml config > output.yml
+		- the "config" option above will mix the two compose files into a single file called "output.yml" and then run that file
+
+
+
+** Service Updates
+
+	- Provides rolling replacement of tasks/containers in a service
+	- Limits downtime (be careful with "prevents" downtime)
+	- Will replace containers for most changes
+	- Has many, many cli options to control the update
+	- Create options will usually change, adding -add or -rm to them
+	- Includes rollback and healthcheck options
+	- Also has scale & rollback subcommands for quicker access
+		- e.g.: "docker service scale web" and "docker service rollback web"
+	- A stack deploy, when pre-existing, will issue service updates
+
+
+	* Swarm Update Examples
+		- Just update the image used to a newer version
+			- e.g.: docker service update --image myapp:1.2.1 <servicename>
+		- Adding an environment variable and remove a port
+			- e.g.: docker service update --env-add NODE_ENV=production --publish-rm 8080
+		- Change number of replicas of two services
+			- e.g.: docker service scale web=8 api=6
+
+
+	* Swarm Updates in Stack Files
+		- Same command. Just edit the YAML file, then
+			- docker stack deploy -c file.yml <stack_name> 
+
+
+
+** Docker Healthchecks
+	- HEALTHCHECK was added in 1.12
+	- Supported in Dockerfile, Compose YAML, docker run, and Swarm Services
+	- Docker engine will exec's the command in the container
+		- (e.g. curl localhost)
+	- It expects exit 0 (OK) or exit 1 (Error)
+	- Three container states: starting, healthy(0), unhealthy(1)
+	- Much better than "is binary still running?"
+	- Not an external monitoring replacement
+	- Healthcheck status shows up in "docker container ls"
+	- Check last 5 healthchecks with "docker container inspect"
+	- Docker run does nothing with healthchecks
+	- Service updates wait for them before continuing
+
+
+	* Healthcheck Docker Run Example
+
+
+docker run \
+ --health-cmd="curl -f localhost:9200/_cluster/health || false"\
+ --health-interval=5s \
+ --health-retries=3 \
+ --health-timeout=2s \
+ --health-start-period=15s \
+ elasticsearch:2
+
+
+ 	* Options for healthcheck command
+ 		-  --interval=DURATION (default: 30s)
+ 		-  --timeout=DURATION (default: 30s)
+ 		-  --start-period=DURATION (default: 0s) (version 17.09+)
+ 		-  --retries=N (default:3)
+
+ 	* Basic command using default options
+ 		- HEALTHCHECK curl -f http://localhost/ || false
+
+ 	* Custom options with the command
+ 		- HEALTHCHECK --timeout=2s --interval=3s --retries=3 \
+ 			- CMD curl -f http://localhost/ || exit 1
+
+
+ 	* Healthcheck in Nginx Dockerfile
+ 		- static website running in Nginx, just default URL
+
+ FROM nginx:1.13
+
+ HEALTHCHECK --interval=30s --timeout=3s \
+  CMD curl -f http://localhost/ || exit 1
+
+
+
+ 	* Healthcheck in postgres Dockerfile
+ 		- Use a PostgreSQL utility to test for ready state
+
+
+ FROM postgres
+
+ # specify real user with -U to prevent errors in log
+
+ HEALTHCHECK --interval=5s --timeout=3s \
+  CMD pg_isready -U postgres || exit 1
+
+
+
+ 	* Healthcheck in Compose/Stack Files
+
+
+ version: "2.1" (minimum for healthchecks)
+ services:
+  web:
+   image: nginx
+   healthcheck:
+    test:["CMD","curl","-f","http://localhost"]
+    interval: 1m30s
+    timeout: 10s
+    retries: 3
+    start_period: 1m  # version 3.4 minimum
+
+
+** Container Registries
+	
+	* Running Docker Registry
+		- A private Image Registry for your network
+		- Part of the docker/distribution GitHub repo
+		- The de facto in private container registries
+		- Not as full featured as Hub or others, no web UI, basic auth only
+		- At its core: A web API and storage system, written in Go
+		- Storage supports local, S3/Azure/Alibaba/Google Cloud, and OpenStack Swift
+		- It's recommended to:
+			- Secure your Registry with TLS
+			- Storage cleanup via Garbage Collection
+			- Enable Hub Caching via "--registry-mirror"
+		- In order to run Docker Registry:
+			- docker container run -d -p 5000:5000 --name registry registry
+
+	* Registry and Proper TLS
+		- "Secure by Default": Docker won't talk to registry without HTTPS
+		- Except, localhost(127.0.0.0/8)
+		- For remote self-signed TLS, enable "insecure-registry" in engine
+
+	* Runing a Private Docker registry
+
+		- Setting volume for the registry
+			- e.g.:
+				- docker container run -d -p 5000:5000 --name registry -v $(pwd):/var/lib/registry registry
+		- Re-tag an existing image and push it to your new registry
+			- e.g.:
+				- docker tag hello-world 127.0.0.1:5000/hello-world
+				- docker push 127.0.0.1:5000/hello-world
+
+		- Remove that image from the local cache and pull it from new registry
+			- e.g.:
+				- docker image remove hello-world
+				- docker image remove 127.0.0.1:5000/hello-world
+				- docker pull 127.0.0.1:5000/hello-world
+
+		- Re-create registry using a bind mount and see how it stores data
+			- e.g.:
+				- docker container run -d -p 5000:5000 --name registry -v $(pwd)/registry-data:/var/lib/registry registry
+
+
+
+** Private Docker Registry with Swarm
+	- works the same way as localhost
+	- because of Routing Mesh, all nodes can see 127.0.0.1:5000
+	- remember to decide how to store images(volume driver)
+	- NOTE: All nodes must be able to access images
+	- ProTip: Use a hosted SaaS registry if possible
